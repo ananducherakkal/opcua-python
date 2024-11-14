@@ -4,36 +4,50 @@ from asyncua import Client
 
 BROKER = 'localhost'
 PORT = 1883
-
 OPC_URL = "opc.tcp://localhost:4840/freeopcua/server/"
+myvar = {}
+topics = {
+    "topic1": 1,
+    "topic2": 2,
+    "topic3": 3,
+}
 
-myvar = None
+# Tracking sets for recently sent updates
+mqtt_to_opcua_tracker = set()
+opcua_to_mqtt_tracker = set()
 
 class SubHandler:
     async def datachange_notification(self, node, val, data):
         var_name = await node.read_browse_name()
-        print("Sending data to mqtt", var_name.Name, val)
-        mqtt_client.publish(var_name.Name, str(val))
+        var_name_str = var_name.Name
+        print(f"OPC <- topic: {var_name_str} valud: {val}")
+
+        # If the value change was triggered by us, ignore it
+        if (var_name_str, val) in opcua_to_mqtt_tracker:
+            opcua_to_mqtt_tracker.remove((var_name_str, val))
+        else:
+            print(f"MQTT -> topic: {var_name_str} valud: {val}")
+            mqtt_client.publish(var_name_str, int(val))
+            mqtt_to_opcua_tracker.add((var_name_str, val))
 
     def event_notification(self, event):
-        print("New event", event)
+        pass
 
 async def setup_opcua_client():
     global myvar
     async with Client(url=OPC_URL) as client:
-        print("Connected to OPC UA server")
 
         uri = "namespace"
         idx = await client.get_namespace_index(uri)
-        print("index of our namespace is %s", idx)
-
-        myvar = await client.nodes.root.get_child("/Objects/2:MyObject/2:MyVariable")
-        print("myvar is: %r", myvar)
+        for key, value in topics.items():
+            myvarx = await client.nodes.root.get_child(f"/Objects/2:MyObject/2:{key}")
+            myvar[key] = myvarx
 
         handler = SubHandler()
         sub = await client.create_subscription(10, handler)
-        handle = await sub.subscribe_data_change(myvar)
-        await asyncio.sleep(0.1)
+        for key, value in myvar.items():
+            handle = await sub.subscribe_data_change(value)
+            await asyncio.sleep(0.1)
 
         await sub.subscribe_events()
 
@@ -41,17 +55,24 @@ async def setup_opcua_client():
             await asyncio.sleep(1)
 
 def on_message(client, userdata, message):
-    topic = message.topic
+    topicx = message.topic
     payload = message.payload.decode("utf-8")
-    print(f"Received message from mqtt server::: {topic}: {payload}")
 
-    if topic.startswith("opc"):
-        if myvar:
-            print(f"Sending to OPCUA: {payload}")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+    print(f"MQTT <- topic: {topicx} valud: {payload}")
 
-            loop.run_until_complete(myvar.write_value(int(payload)))
+    # Check if message was sent by us, if yes, ignore
+    if (topicx, int(payload)) in mqtt_to_opcua_tracker:
+        mqtt_to_opcua_tracker.remove((topicx, int(payload)))
+        return
+
+    if myvar[topicx]:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # Track the value before sending to OPC UA
+        opcua_to_mqtt_tracker.add((myvar[topicx], int(payload)))
+        print(f"OPC -> topic: {topicx} valud: {payload}")
+        loop.run_until_complete(myvar[topicx].write_value(int(payload)))
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:

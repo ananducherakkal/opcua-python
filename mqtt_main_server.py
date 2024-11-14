@@ -3,14 +3,15 @@ import time
 
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
-MQTT_TOPIC = "opc_something"
+MQTT_TOPIC = [
+    "topic1",
+    "topic2",
+    "topic3"
+]
 count = 1
 
 def on_message(client, userdata, message):
-    global count
-    count = int(message.payload.decode())
-    print("setting count", count)
-    print(f"Received on MQTT server:: '{message.payload.decode()}' on topic '{message.topic}'")
+    print(f"MQTT <- topic: {message.topic}, value: {message.payload.decode()}")
 
 client = mqtt.Client()
 
@@ -18,15 +19,17 @@ client.on_message = on_message
 
 client.connect(MQTT_BROKER, MQTT_PORT, 60)
 
-client.subscribe(MQTT_TOPIC)
+for item in MQTT_TOPIC:
+    print("Subscribing to :", item)
+    client.subscribe(item)
 
 client.loop_start()
 
 try:
     while True:
         count += 1
-        client.publish(MQTT_TOPIC, count)
-        print(f"Sending message from MQTTServer: '{count}'")
+        client.publish("topic1", count)
+        print(f"MQTT -> topic: topic1, value: {count}")
         time.sleep(4)
 except KeyboardInterrupt:
     print("Disconnecting from broker")
