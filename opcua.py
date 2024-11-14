@@ -18,6 +18,9 @@ async def main():
     # Setup object and variable
     myobj = await objects.add_object(idx, "MyObject")
     myVar = await myobj.add_variable(idx, "MyVariable", 1)
+    sdf = await myobj.add_variable(idx, "MyVariable", 1)
+    print("setting my var", myVar)
+    print("setting my sdf", sdf)
     await myVar.set_writable()
 
     await server.start()
@@ -32,7 +35,7 @@ async def main():
             await asyncio.sleep(5)
             count += 1
             await myVar.write_value(count)
-            print("Message send to client: ", count)
+            print("Message send from opcua server: ", count)
 
     finally:
         await subscription.delete()

@@ -1,44 +1,33 @@
-import sys
 import asyncio
-from asyncua import Server, ua
+from asyncua import Client, ua
+import paho.mqtt.client as mqtt
 
-topics = {
-    "robot1status": "active"
-}
+# MQTT setup
+MQTT_BROKER = 'localhost'
+PORT = 1883
+MQTT_TOPIC = "topxx"
 
-opcuaVars = {}
+# OPC UA setup
+OPC_UA_SERVER = "opc.tcp://localhost:4840/freeopcua/server/"
+OPC_UA_NODE_ID = "ns=2;i=2"  # Replace with your OPC UA node ID
 
-class HandleChangeFromClient:
-    async def datachange_notification(self, node, val, data):
-        print(f"Value change from client: {val}")
+async def write_to_opcua(data):
+    async with Client(OPC_UA_SERVER) as client:
+        node = client.get_node(OPC_UA_NODE_ID)
+        await node.write_value(ua.DataValue(ua.Variant(int(data), ua.VariantType.Int32)))
+        print(f"Data written to OPC UA: {data}")
 
-async def main():
-    server = Server()
-    await server.init()
+def on_mqtt_message(client, userdata, message):
+    data = float(message.payload.decode())
+    print(f"Received from MQTT: {data}")
+    asyncio.run(write_to_opcua(data))  # Send data to OPC UA
 
-    server.set_endpoint("opc.tcp://localhost:4840/freeopcua/server/")
-    idx = await server.register_namespace("namespace")
-
-    objects = server.nodes.objects
-
-    # Setup object and variable
-    system1 = await objects.add_object(idx, "MyObject")
-    for key, value in topics.items():
-        opcuaVars[key] = await system1.add_variable(idx, key, value)
-        await opcuaVars[key].set_writable()
-   
-    await server.start()
-
-    try:
-        handler = HandleChangeFromClient()
-        subscription = await server.create_subscription(500, handler)
-        
-        for key, opcua_var in opcuaVars.items():
-            await subscription.subscribe_data_change(opcua_var)
-
-    finally:
-        await subscription.delete()
-        await server.stop()
+def start_mqtt():
+    mqtt_client = mqtt.Client()
+    mqtt_client.connect(MQTT_BROKER, PORT, 60)
+    mqtt_client.subscribe(MQTT_TOPIC)
+    mqtt_client.on_message = on_mqtt_message
+    mqtt_client.loop_forever()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    start_mqtt()
