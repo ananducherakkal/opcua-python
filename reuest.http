@@ -1,0 +1,15 @@
+###
+GET http://localhost:5000/topic
+Content-Type: application/json
+
+###
+GET http://localhost:5000/topic/robot_1_status
+Content-Type: application/json
+
+###
+POST http://localhost:5000/topic/robot_1_status
+Content-Type: application/json
+
+{
+    "value": 1
+}

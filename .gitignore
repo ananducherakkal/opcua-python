@@ -49,3 +49,5 @@ coverage.xml
 # Miscellaneous
 .DS_Store
 Thumbs.db
+
+.env
